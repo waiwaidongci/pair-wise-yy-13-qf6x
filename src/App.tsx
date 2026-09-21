@@ -1,126 +1,82 @@
+import { useState } from "react";
 import "./styles.css";
-
-const project = {
-  "sourceNo": 7,
-  "id": "hxyfront-62012",
-  "port": 62012,
-  "title": "纺织染整小样管理",
-  "domain": "纺织染整",
-  "prompt": "我需要一个纺织染整实验室的小样管理前端系统，可以记录面料成分、克重、染料配方、浴比、温度曲线、保温时间、后整理方式、色差值和评审结果。页面需要有小样批次列表、配方比例展示、Lab色差对比、工艺曲线摘要和按客户订单筛选。",
-  "palette": [
-    "#be123c",
-    "#4f46e5",
-    "#16a34a"
-  ],
-  "metrics": [
-    "小样批次",
-    "色差超限",
-    "客户订单",
-    "通过率"
-  ],
-  "filters": [
-    "棉",
-    "涤纶",
-    "锦纶",
-    "混纺"
-  ],
-  "fields": [
-    "面料成分",
-    "克重",
-    "染料配方",
-    "浴比",
-    "保温时间",
-    "色差值"
-  ],
-  "records": [
-    [
-      "LAB-620A",
-      "棉府绸120g",
-      "ΔE 0.84",
-      "评审通过"
-    ],
-    [
-      "LAB-621C",
-      "涤纶针织",
-      "升温曲线偏快",
-      "待复染"
-    ],
-    [
-      "LAB-624B",
-      "混纺斜纹",
-      "后整理柔软剂2%",
-      "客户确认中"
-    ]
-  ]
-};
+import { useStore } from "./ui/useStore";
+import { BatchWorkspace } from "./ui/BatchWorkspace";
+import { DispositionQueue } from "./ui/DispositionQueue";
+import { Timeline } from "./ui/Timeline";
 
 function App() {
+  const { state, dispatch, resetToSeed, toast } = useStore();
+  const [selectedId, setSelectedId] = useState(state.batches[0]?.id ?? "");
+
+  const total = state.batches.length;
+  const openCount = state.batches.reduce(
+    (n, b) => n + b.anomalies.filter((a) => a.status === "open").length,
+    0
+  );
+  const rushCount = state.batches.reduce(
+    (n, b) =>
+      n +
+      b.anomalies.filter((a) => a.status === "open" && a.urgentAt !== undefined)
+        .length,
+    0
+  );
+  const releasedCount = state.batches.filter((b) => b.review === "approved").length;
+
+  const metrics = [
+    { label: "受控批次", value: total },
+    { label: "待处置异常", value: openCount, alert: openCount > 0 },
+    { label: "加急异常", value: rushCount },
+    { label: "已放行批次", value: releasedCount },
+  ];
+
   return (
     <main className="app">
       <section className="hero">
-        <p>{project.id} · 源提示词{project.sourceNo} · Port {project.port}</p>
-        <h1>{project.title}</h1>
-        <span>{project.prompt}</span>
+        <p>hxyfront-62012 · 源提示词7 · Port 62012</p>
+        <h1>染整异常放行台</h1>
+        <span>
+          小样台读数自动判定：温度连续三分钟偏离两度、酸碱值超出 4.5–7.5 或泡沫超限即生成待处置记录，批次锁定不得评审。
+          异常按发生顺序解除——温度项只解补时，酸碱项须两次复测合格，泡沫项须排泡后复测；加急可插队首但跳不过更早未闭环异常；
+          闭环后改参数会使本项及后续结论失效，旧履历全程留档。
+        </span>
       </section>
 
       <section className="metrics">
-        {project.metrics.map((metric: string, index: number) => (
-          <article key={metric}>
-            <small>{metric}</small>
-            <strong>{[28, 6, 14, 91][index] ?? 10}</strong>
+        {metrics.map((m) => (
+          <article key={m.label} className={m.alert ? "alert" : ""}>
+            <small>{m.label}</small>
+            <strong>{m.value}</strong>
           </article>
         ))}
       </section>
 
+      <DispositionQueue
+        state={state}
+        dispatch={dispatch}
+        selectedBatchId={selectedId}
+        onSelectBatch={setSelectedId}
+      />
+
       <section className="workspace">
-        <aside className="panel">
-          <h2>{project.domain}分类</h2>
-          <div className="chips">
-            {project.filters.map((item: string) => (
-              <button key={item}>{item}</button>
-            ))}
-          </div>
-        </aside>
-
-        <section className="panel form-panel">
-          <div className="heading">
-            <div>
-              <p>专业字段</p>
-              <h2>新增记录</h2>
-            </div>
-            <button className="primary">保存记录</button>
-          </div>
-          <div className="field-grid">
-            {project.fields.map((field: string) => (
-              <label key={field}>
-                <span>{field}</span>
-                <input placeholder={"填写" + field} />
-              </label>
-            ))}
-          </div>
-        </section>
+        <BatchWorkspace
+          state={state}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          dispatch={dispatch}
+        />
       </section>
 
-      <section className="panel">
-        <div className="heading">
-          <div>
-            <p>近期记录</p>
-            <h2>工作台摘要</h2>
-          </div>
-          <button>导出CSV</button>
-        </div>
-        <div className="records">
-          {project.records.map((record: string[], index: number) => (
-            <article key={record.join("-")}>
-              <b>{String(index + 1).padStart(2, "0")}</b>
-              <div>
-                <h3>{record[0]}</h3>
-                <p>{record.slice(1).join(" · ")}</p>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
+      <Timeline state={state} />
+
+      <footer className="page-foot">
+        <span>状态计算（domain）· 持久化（persistence/localStorage）· 页面交互（ui）三层分离，刷新后列表、队列与时间线一致</span>
+        <button className="ghost" onClick={resetToSeed}>
+          重置演示数据
+        </button>
+      </footer>
+
+      {toast && <div className={"toast toast-" + toast.kind}>{toast.text}</div>}
     </main>
   );
 }
